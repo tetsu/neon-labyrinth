@@ -2,6 +2,10 @@
 
 A procedural 2D Roguelike Dungeon Crawler featuring a dark mode aesthetic with neon cyan and hot pink accents.
 
+![Live Demo](https://img.shields.io/badge/Play-Live_Demo-brightgreen?style=for-the-badge&logo=github)
+
+**Play the game here:** [https://tetsu.github.io/neon-labyrinth](https://tetsu.github.io/neon-labyrinth)
+
 ## How to Play
 
 1. Clone or download this repository to your local machine.
@@ -23,6 +27,7 @@ This game was proudly created using **Antigravity**, Google Deepmind's advanced 
 ## Prompt
 
 1
+
 ```
 🛠 The Master Prompt: "Neon Labyrinth"
 Role: You are a Senior Game Architect and Creative Director.
@@ -58,7 +63,8 @@ Self-Correct: Use the Browser Agent to check for console errors or "infinite loo
 Acknowledge and provide an initial Task List before writing code.
 ```
 
-1. 
+1.
+
 ```
 Add following logics. Please make a task list first, and proceed with development.
 
