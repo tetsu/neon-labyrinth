@@ -4,22 +4,30 @@ class StateAgent {
         this.states = {
             MENU: 'MENU',
             PLAYING: 'PLAYING',
-            GAMEOVER: 'GAMEOVER'
+            GAMEOVER: 'GAMEOVER',
+            STAGE_TRANSITION: 'STAGE_TRANSITION'
         };
         this.currentState = this.states.MENU;
 
         this.screens = {
             MENU: document.getElementById('start-screen'),
             PLAYING: document.getElementById('hud'),
-            GAMEOVER: document.getElementById('death-screen')
+            GAMEOVER: document.getElementById('death-screen'),
+            STAGE_TRANSITION: document.getElementById('stage-screen')
         };
 
         this.setupEventListeners();
     }
 
     setupEventListeners() {
-        this.screens.MENU.addEventListener('click', () => this.changeState(this.states.PLAYING));
-        this.screens.GAMEOVER.addEventListener('click', () => this.changeState(this.states.MENU));
+        this.screens.MENU.addEventListener('click', () => {
+            if (this.onChange) this.onChange('INIT_START'); // Custom event hook
+            this.changeState(this.states.STAGE_TRANSITION);
+        });
+        this.screens.GAMEOVER.addEventListener('click', () => {
+            if (this.onChange) this.onChange('RESET');
+            this.changeState(this.states.MENU);
+        });
     }
 
     changeState(newState) {
@@ -74,6 +82,12 @@ class MapAgent {
         this.splitNode(root, 4);
         this.createRooms(root);
         this.createCorridors(root);
+
+        // Final room gets the Goal (value 2)
+        if (this.rooms.length > 0) {
+            let lastRoom = this.rooms[this.rooms.length - 1];
+            this.grid[lastRoom.centerY][lastRoom.centerX] = 2;
+        }
 
         console.log(`Map generated with ${this.rooms.length} rooms.`);
     }
@@ -155,13 +169,23 @@ class MapAgent {
     draw(ctx) {
         if (this.grid.length === 0) return;
 
-        // Draw floors
+        // Draw floors & goal
         ctx.fillStyle = '#0a0a0f';
         ctx.shadowBlur = 0;
         for (let y = 0; y < this.rows; y++) {
             for (let x = 0; x < this.cols; x++) {
-                if (this.grid[y][x] === 0) {
+                if (this.grid[y][x] === 0 || this.grid[y][x] === 2) {
                     ctx.fillRect(x * this.tileSize, y * this.tileSize, this.tileSize, this.tileSize);
+                }
+                if (this.grid[y][x] === 2) {
+                    ctx.save();
+                    ctx.fillStyle = '#00ff00';
+                    ctx.shadowColor = '#00ff00';
+                    ctx.shadowBlur = 15;
+                    // Pulsing effect using current time
+                    let pulse = Math.abs(Math.sin(Date.now() / 300)) * 5;
+                    ctx.fillRect(x * this.tileSize + 10 - pulse / 2, y * this.tileSize + 10 - pulse / 2, this.tileSize - 20 + pulse, this.tileSize - 20 + pulse);
+                    ctx.restore();
                 }
             }
         }
@@ -180,14 +204,16 @@ class MapAgent {
                     let px = x * ts;
                     let py = y * ts;
 
+                    let isEmpty = (val) => val === 0 || val === 2;
+
                     // Top edge
-                    if (y > 0 && this.grid[y - 1][x] === 0) { ctx.moveTo(px, py); ctx.lineTo(px + ts, py); }
+                    if (y > 0 && isEmpty(this.grid[y - 1][x])) { ctx.moveTo(px, py); ctx.lineTo(px + ts, py); }
                     // Bottom edge
-                    if (y < this.rows - 1 && this.grid[y + 1][x] === 0) { ctx.moveTo(px, py + ts); ctx.lineTo(px + ts, py + ts); }
+                    if (y < this.rows - 1 && isEmpty(this.grid[y + 1][x])) { ctx.moveTo(px, py + ts); ctx.lineTo(px + ts, py + ts); }
                     // Left edge
-                    if (x > 0 && this.grid[y][x - 1] === 0) { ctx.moveTo(px, py); ctx.lineTo(px, py + ts); }
+                    if (x > 0 && isEmpty(this.grid[y][x - 1])) { ctx.moveTo(px, py); ctx.lineTo(px, py + ts); }
                     // Right edge
-                    if (x < this.cols - 1 && this.grid[y][x + 1] === 0) { ctx.moveTo(px + ts, py); ctx.lineTo(px + ts, py + ts); }
+                    if (x < this.cols - 1 && isEmpty(this.grid[y][x + 1])) { ctx.moveTo(px + ts, py); ctx.lineTo(px + ts, py + ts); }
                 }
             }
         }
@@ -252,7 +278,12 @@ class PhysicsAgent {
 
         for (let r = startRow; r <= endRow; r++) {
             for (let c = startCol; c <= endCol; c++) {
-                if (this.mapAgent.grid[r][c] === 1) return true;
+                if (this.mapAgent.grid[r][c] === 2) {
+                    if (!this.triggeredGoal) {
+                        this.triggeredGoal = true;
+                        if (this.mapAgent.engine) this.mapAgent.engine.nextStage();
+                    }
+                } else if (this.mapAgent.grid[r][c] === 1) return true;
             }
         }
         return false;
@@ -273,29 +304,39 @@ class CombatAgent {
         this.engine = engine;
         this.projectiles = [];
         this.enemies = [];
+        this.mouseX = engine.canvas.width / 2;
+        this.mouseY = engine.canvas.height / 2;
 
-        window.addEventListener('mousedown', (e) => this.shoot(e));
+        window.addEventListener('mousedown', (e) => this.shootTarget(e.clientX, e.clientY));
+        window.addEventListener('mousemove', (e) => {
+            this.mouseX = e.clientX;
+            this.mouseY = e.clientY;
+        });
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') this.shootTarget(this.mouseX, this.mouseY);
+        });
     }
 
     spawnEnemies(count) {
         this.enemies = [];
         let rooms = this.engine.mapAgent.rooms;
+        let speedMult = 1 + (this.engine.currentStage * 0.1);
         for (let i = 0; i < count; i++) {
             let room = rooms[Math.floor(Math.random() * (rooms.length - 1)) + 1]; // Skip first room
             let ex = room.centerX * this.engine.mapAgent.tileSize;
             let ey = room.centerY * this.engine.mapAgent.tileSize;
-            this.enemies.push({ x: ex, y: ey, w: 16, hp: 3, speed: 100 });
+            this.enemies.push({ x: ex, y: ey, w: 16, hp: 3 + Math.floor(this.engine.currentStage / 2), speed: 100 * speedMult });
         }
     }
 
-    shoot(e) {
+    shootTarget(clientX, clientY) {
         if (this.engine.stateAgent.currentState !== this.engine.stateAgent.states.PLAYING) return;
 
         let camX = this.engine.canvas.width / 2 - this.engine.physicsAgent.x;
         let camY = this.engine.canvas.height / 2 - this.engine.physicsAgent.y;
 
-        let worldX = e.clientX - camX;
-        let worldY = e.clientY - camY;
+        let worldX = clientX - camX;
+        let worldY = clientY - camY;
 
         let dx = worldX - this.engine.physicsAgent.x;
         let dy = worldY - this.engine.physicsAgent.y;
@@ -420,6 +461,7 @@ class GameEngine {
         window.addEventListener('resize', () => this.resizeCanvas());
 
         this.mapAgent = new MapAgent();
+        this.mapAgent.engine = this;
         this.physicsAgent = new PhysicsAgent(this.mapAgent);
         this.combatAgent = new CombatAgent(this);
         this.stateAgent = new StateAgent((state) => this.onStateChange(state));
@@ -428,19 +470,48 @@ class GameEngine {
         this.hitStopDuration = 0; // Remaining hit stop time
         this.shakeDuration = 0;
         this.shakeIntensity = 0;
+        this.currentStage = 1;
 
         this.loop = this.loop.bind(this);
         requestAnimationFrame(this.loop);
     }
 
     onStateChange(state) {
-        if (state === this.stateAgent.states.PLAYING) {
-            this.mapAgent.generate();
-            let startRoom = this.mapAgent.rooms[0];
-            let ts = this.mapAgent.tileSize;
-            this.physicsAgent.spawn(startRoom.centerX * ts, startRoom.centerY * ts);
-            this.combatAgent.spawnEnemies(this.mapAgent.rooms.length * 2); // 2 per room roughly
+        if (state === 'INIT_START') {
+            this.currentStage = 1;
+            this.triggerTransition();
+        } else if (state === 'RESET') {
+            this.currentStage = 1;
+            this.mapAgent.grid = [];
         }
+    }
+
+    startStage() {
+        this.mapAgent.grid = [];
+        this.mapAgent.generate();
+        let startRoom = this.mapAgent.rooms[0];
+        let ts = this.mapAgent.tileSize;
+        this.physicsAgent.spawn(startRoom.centerX * ts, startRoom.centerY * ts);
+        this.physicsAgent.triggeredGoal = false;
+
+        let baseEnemyCount = this.mapAgent.rooms.length * 2;
+        let enemyCount = Math.floor(baseEnemyCount * (1 + (this.currentStage - 1) * 0.2));
+        this.combatAgent.spawnEnemies(enemyCount);
+    }
+
+    nextStage() {
+        this.currentStage++;
+        this.triggerTransition();
+    }
+
+    triggerTransition() {
+        this.stateAgent.changeState(this.stateAgent.states.STAGE_TRANSITION);
+        document.getElementById('stage-number').innerText = this.currentStage;
+
+        setTimeout(() => {
+            this.startStage();
+            this.stateAgent.changeState(this.stateAgent.states.PLAYING);
+        }, 2000);
     }
 
     resizeCanvas() {
@@ -501,7 +572,7 @@ class GameEngine {
 
             // UI
             document.getElementById('hp-value').innerText = "100"; // Placeholder for actual HP
-            document.getElementById('rooms-value').innerText = this.mapAgent.rooms.length - this.combatAgent.enemies.length > 0 ? this.mapAgent.rooms.length - this.combatAgent.enemies.length : 0;
+            document.getElementById('rooms-value').innerText = `Stage ${this.currentStage} | Remaining: ${this.combatAgent.enemies.length}`;
         }
     }
 
