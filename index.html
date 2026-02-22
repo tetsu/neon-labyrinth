@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Labyrinth</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-layer">
+            <div id="start-screen" class="screen active">
+                <h1>NEON LABYRINTH</h1>
+                <p>Click to Start</p>
+            </div>
+            <div id="hud" class="screen">
+                <div class="hud-item">HP: <span id="hp-value">100</span></div>
+                <div class="hud-item">ROOMS: <span id="rooms-value">0</span></div>
+            </div>
+            <div id="death-screen" class="screen">
+                <h1 class="pink-text">CRITICAL FAILURE</h1>
+                <p>Rooms Cleared: <span id="final-rooms">0</span></p>
+                <p>Click to Restart</p>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
